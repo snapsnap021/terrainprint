@@ -33,7 +33,9 @@ async def generate(
     exaggeration: float = Form(2.0),
     base_thickness_mm: float = Form(2.0),
     vertical_offset_m: float = Form(4.0),
-    tube_diameter_mm: float = Form(1.2),
+    tube_diameter_mm: float = Form(1.2),  # tube diameter, or line width
+    route_style: str = Form("tube"),       # "tube" or "line"
+    line_height_mm: float = Form(1.0),
     max_grid: int = Form(0),  # 0 = full DEM resolution
     demtype: str = Form("COP30"),
     gpx: UploadFile = File(...),
@@ -44,6 +46,8 @@ async def generate(
             raise ValueError
     except Exception:
         raise HTTPException(400, "bbox must be a JSON array [west, south, east, north]")
+    if route_style not in ("tube", "line"):
+        raise HTTPException(400, "route_style must be 'tube' or 'line'")
     if demtype not in DEM_TYPES:
         raise HTTPException(400, f"demtype must be one of {', '.join(DEM_TYPES)}")
 
@@ -74,6 +78,9 @@ async def generate(
             metadata,
             vertical_offset_m=vertical_offset_m,
             tube_radius_mm=tube_diameter_mm / 2.0,
+            style=route_style,
+            line_width_mm=tube_diameter_mm,
+            line_height_mm=line_height_mm,
         )
 
         terrain_stl = os.path.join(workdir, "terrain.stl")
@@ -98,8 +105,11 @@ async def generate(
             f"Base thickness: {metadata['base_thickness_mm']:.2f} mm",
             f"Total terrain height: {metadata['model_total_height_mm']:.2f} mm",
             f"Terrain mesh watertight: {metadata['is_watertight']}",
-            f"Route vertical offset above terrain: {vertical_offset_m} m (real-world, pre-scale)",
-            f"Route tube diameter: {tube_diameter_mm} mm",
+            *([f"Route style: tube, {tube_diameter_mm} mm diameter",
+               f"Route vertical offset above terrain: {vertical_offset_m} m (real-world, pre-scale)"]
+              if route_style == "tube" else
+              [f"Route style: flat line, {tube_diameter_mm} mm wide, "
+               f"{line_height_mm} mm above the terrain (sunk 1 mm into it)"]),
             "",
             "terrain.stl and route.stl share the same origin and scale,",
             "so they should already be aligned when loaded together in a slicer",

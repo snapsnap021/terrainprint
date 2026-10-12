@@ -73,10 +73,16 @@ Then open http://127.0.0.1:8000 in your browser.
    - *Vertical exaggeration* — 1.0 is true-to-scale (often looks flat);
      1.5–3.0 usually looks right for mountainous terrain.
    - *Base thickness* — solid base under the terrain, in mm.
-   - *Route tube diameter* — thickness of the printed route line, in mm.
-     1–1.5mm prints reliably on a 0.4mm nozzle.
-   - *Route height above terrain* — a small real-world offset (metres)
-     so the route sits proud of the surface rather than being buried in it.
+   - *Route style* — **Tube** (round) or **Flat line** (flat top, straight
+     vertical sides, like a raised road).
+   - *Route tube diameter* / *Line width* — thickness of the printed route,
+     in mm. 1–1.5mm prints reliably on a 0.4mm nozzle.
+   - *Route height above terrain* (tube only) — a small real-world offset
+     (metres) so the tube sits proud of the surface rather than being
+     buried in it.
+   - *Line height above terrain* (flat line only) — how far the line stands
+     up from the terrain, in mm. The line is also sunk 1 mm into the
+     terrain so it never floats where the ground rises between GPS points.
    - *Terrain detail* — **Full** keeps every elevation point (~30 m apart,
      about 0.3 mm on a 200 mm print) and is the default. Medium/Low average
      neighbouring points together for smaller, faster files at the cost of

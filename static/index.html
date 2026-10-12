@@ -56,10 +56,21 @@
   <input type="number" id="exaggeration" value="2.0" step="0.1" min="0.1">
   <label>Base thickness <small>(mm)</small></label>
   <input type="number" id="base_thickness_mm" value="2.0" step="0.5" min="0.5">
-  <label>Route tube diameter <small>(mm)</small></label>
+  <label>Route style</label>
+  <select id="route_style">
+    <option value="tube" selected>Tube (round)</option>
+    <option value="line">Flat line (flat top, straight sides)</option>
+  </select>
+  <label><span id="width_label">Route tube diameter</span> <small>(mm)</small></label>
   <input type="number" id="tube_diameter_mm" value="1.2" step="0.1" min="0.4">
-  <label>Route height above terrain <small>(real-world m)</small></label>
-  <input type="number" id="vertical_offset_m" value="4.0" step="1" min="0">
+  <div id="tube_opts">
+    <label>Route height above terrain <small>(real-world m)</small></label>
+    <input type="number" id="vertical_offset_m" value="4.0" step="1" min="0">
+  </div>
+  <div id="line_opts" hidden>
+    <label>Line height above terrain <small>(mm)</small></label>
+    <input type="number" id="line_height_mm" value="1.0" step="0.1" min="0.2">
+  </div>
   <label>Terrain detail</label>
   <select id="max_grid">
     <option value="0" selected>Full (every elevation point, ~30 m)</option>
@@ -172,6 +183,15 @@ $("api_key").addEventListener("change", () => {
   try { localStorage.setItem("ot_api_key", $("api_key").value.trim()); } catch (e) {}
 });
 
+function updateRouteStyle() {
+  const line = $("route_style").value === "line";
+  $("tube_opts").hidden = line;
+  $("line_opts").hidden = !line;
+  $("width_label").textContent = line ? "Line width" : "Route tube diameter";
+}
+$("route_style").addEventListener("change", updateRouteStyle);
+updateRouteStyle();
+
 function status(msg, isErr) { $("status").textContent = msg; $("status").className = isErr ? "err" : ""; }
 
 $("generate").addEventListener("click", async () => {
@@ -184,7 +204,7 @@ $("generate").addEventListener("click", async () => {
   const fd = new FormData();
   fd.append("bbox", JSON.stringify(bbox));
   fd.append("api_key", key);
-  for (const id of ["footprint_mm", "exaggeration", "base_thickness_mm", "vertical_offset_m", "tube_diameter_mm", "max_grid", "demtype"])
+  for (const id of ["footprint_mm", "exaggeration", "base_thickness_mm", "vertical_offset_m", "tube_diameter_mm", "max_grid", "demtype", "route_style", "line_height_mm"])
     fd.append(id, $(id).value);
   fd.append("gpx", gpx);
 
