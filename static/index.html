@@ -47,8 +47,14 @@
   <div id="printsize"></div>
   <small class="hint">To move or resize the box by hand: click the pencil icon on the map, drag the box, then click Save.</small>
 
-  <label>OpenTopography API key</label>
-  <input type="password" id="api_key" autocomplete="off">
+  <div id="access_wrap" hidden>
+    <label>Access code <small>(ask whoever shared this site)</small></label>
+    <input type="password" id="access_code" autocomplete="off">
+  </div>
+  <div id="key_wrap">
+    <label>OpenTopography API key <small>(free at portal.opentopography.org)</small></label>
+    <input type="password" id="api_key" autocomplete="off">
+  </div>
 
   <label>Footprint <small>(longest side, mm)</small></label>
   <input type="number" id="footprint_mm" value="200" step="1" min="10">
@@ -178,10 +184,21 @@ $("fit").addEventListener("click", () => {
   setRect(routeLayer.getBounds().pad(0.08));
 });
 
-try { $("api_key").value = localStorage.getItem("ot_api_key") || ""; } catch (e) {}
-$("api_key").addEventListener("change", () => {
-  try { localStorage.setItem("ot_api_key", $("api_key").value.trim()); } catch (e) {}
-});
+// remember the key and access code in this browser only
+for (const [id, store] of [["api_key", "ot_api_key"], ["access_code", "access_code"]]) {
+  try { $(id).value = localStorage.getItem(store) || ""; } catch (e) {}
+  $(id).addEventListener("change", () => {
+    try { localStorage.setItem(store, $(id).value.trim()); } catch (e) {}
+  });
+}
+
+// ask the server whether it supplies the API key / needs an access code
+let serverConfig = { server_api_key: false, access_code_required: false };
+fetch("/api/config").then(r => r.json()).then(c => {
+  serverConfig = c;
+  $("key_wrap").hidden = c.server_api_key;
+  $("access_wrap").hidden = !c.access_code_required;
+}).catch(() => {});
 
 function updateRouteStyle() {
   const line = $("route_style").value === "line";
@@ -199,17 +216,20 @@ $("generate").addEventListener("click", async () => {
   const key = $("api_key").value.trim();
   if (!bbox) return status("Draw an area on the map first.", true);
   if (!gpx) return status("Choose a GPX file.", true);
-  if (!key) return status("Enter your OpenTopography API key.", true);
+  if (!key && !serverConfig.server_api_key) return status("Enter your OpenTopography API key.", true);
+  const code = $("access_code").value.trim();
+  if (serverConfig.access_code_required && !code) return status("Enter the access code.", true);
 
   const fd = new FormData();
   fd.append("bbox", JSON.stringify(bbox));
   fd.append("api_key", key);
+  fd.append("access_code", code);
   for (const id of ["footprint_mm", "exaggeration", "base_thickness_mm", "vertical_offset_m", "tube_diameter_mm", "max_grid", "demtype", "route_style", "line_height_mm"])
     fd.append(id, $(id).value);
   fd.append("gpx", gpx);
 
   $("generate").disabled = true;
-  status("Downloading elevation data and building meshes… this can take a minute.");
+  status("Downloading elevation data and building meshes… this can take a minute or two (longer if someone else is generating at the same time).");
   try {
     const resp = await fetch("/api/generate", { method: "POST", body: fd });
     if (!resp.ok) {

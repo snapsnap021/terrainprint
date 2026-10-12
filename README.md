@@ -132,3 +132,22 @@ Then open http://127.0.0.1:8000 in your browser.
 - `test_mesh_logic.py` — a standalone check of the terrain mesh math
   (watertightness, scale, orientation) that doesn't require the full
   dependency stack; run with `python3 test_mesh_logic.py`.
+
+## Hosting it online (to share with friends)
+
+The repo includes a `Dockerfile` and a `render.yaml` blueprint for
+[Render](https://render.com). Render dashboard → **New** → **Blueprint** →
+pick this repository. Render asks for two values:
+
+- `OPENTOPO_API_KEY` — your OpenTopography key, so visitors don't need their own.
+- `ACCESS_CODE` — a code your friends must enter before generating, so
+  strangers can't use up your key's allowance.
+
+`MAX_GRID=700` is preset to keep each job inside the free plan's 512 MB of
+memory (700 points per side is about 0.3 mm spacing on a 200 mm print, so
+there's no visible loss). Jobs run one at a time; others queue.
+
+All three settings are optional environment variables, so the same app
+still runs locally exactly as before when none are set.
+
+Run the tests with `python -m pytest tests`.

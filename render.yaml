@@ -1,0 +1,18 @@
+# Render Blueprint: Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: terrainprint
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/config
+    envVars:
+      # Your OpenTopography key, so visitors don't need one. Render asks for it.
+      - key: OPENTOPO_API_KEY
+        sync: false
+      # Code your friends type in before generating. Render asks for it.
+      - key: ACCESS_CODE
+        sync: false
+      # Keeps each job inside the free plan's 512 MB of memory.
+      # 700 points per side is ~0.3 mm spacing on a 200 mm print.
+      - key: MAX_GRID
+        value: "700"

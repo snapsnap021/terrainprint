@@ -5,6 +5,24 @@ import trimesh
 from scipy import ndimage
 
 
+def write_stl(path: str, vertices: np.ndarray, faces: np.ndarray):
+    """Write a binary STL straight from numpy arrays.
+
+    Uses far less memory than trimesh's exporter on full-resolution terrain
+    (which matters on small hosted instances)."""
+    tri = vertices[faces].astype(np.float32)                     # (n, 3, 3)
+    normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    lengths = np.linalg.norm(normals, axis=1, keepdims=True)
+    normals = np.divide(normals, lengths, out=np.zeros_like(normals), where=lengths > 0)
+    record = np.dtype([("normal", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")])
+    data = np.empty(len(faces), dtype=record)
+    data["normal"], data["v"], data["attr"] = normals, tri, 0
+    with open(path, "wb") as f:
+        f.write(b"terrainprint".ljust(80, b" "))
+        f.write(np.uint32(len(faces)).tobytes())
+        data.tofile(f)
+
+
 def _trim_to_valid(valid: np.ndarray):
     """Return (r0, r1, c0, c1) of a rectangle inside the grid whose border
     rows/columns contain only valid cells.
@@ -169,7 +187,6 @@ def build_terrain_mesh(dem_path: str, footprint_mm: float, exaggeration: float,
         "model_height_mm": height_m * horizontal_scale,
         "model_relief_mm": (max_elev - min_elev) * vertical_scale,
         "model_total_height_mm": base_thickness_mm + (max_elev - min_elev) * vertical_scale,
-        "is_watertight": bool(mesh.is_watertight),
         # the exact (downsampled) grid the top surface was built from, so the
         # route can be draped on the printed surface rather than the raw DEM
         "grid_xs": xs,
