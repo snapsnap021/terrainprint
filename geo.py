@@ -52,11 +52,17 @@ def reproject_to_utm(src_path: str, dst_path: str) -> int:
             src.crs, dst_crs, src.width, src.height, *src.bounds
         )
         kwargs = src.meta.copy()
+        # float32 + NaN nodata: the lon/lat box becomes a slightly rotated
+        # quadrilateral in UTM, and the corner wedges of the new grid that it
+        # doesn't cover must be marked as missing (not 0 m, which is what an
+        # integer/no-nodata source would give) so the mesh builder can trim them.
         kwargs.update({
             "crs": dst_crs,
             "transform": transform,
             "width": width,
             "height": height,
+            "dtype": "float32",
+            "nodata": float("nan"),
         })
 
         with rasterio.open(dst_path, "w", **kwargs) as dst:
@@ -68,6 +74,8 @@ def reproject_to_utm(src_path: str, dst_path: str) -> int:
                     src_crs=src.crs,
                     dst_transform=transform,
                     dst_crs=dst_crs,
+                    src_nodata=src.nodata,
+                    dst_nodata=float("nan"),
                     resampling=Resampling.bilinear,
                 )
     return dst_epsg

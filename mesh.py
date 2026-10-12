@@ -2,6 +2,36 @@
 import numpy as np
 import rasterio
 import trimesh
+from scipy import ndimage
+
+
+def _trim_to_valid(valid: np.ndarray):
+    """Return (r0, r1, c0, c1) of a rectangle inside the grid whose border
+    rows/columns contain only valid cells.
+
+    After reprojection the data covers a slightly rotated quadrilateral, so
+    the grid has empty wedges along its edges. Peel off whichever edge row or
+    column is missing the largest share of its cells until all four edges
+    are clean -- that leaves straight, vertical walls on the printed model."""
+    r0, r1, c0, c1 = 0, valid.shape[0], 0, valid.shape[1]
+    while r1 - r0 > 2 and c1 - c0 > 2:
+        sub = valid[r0:r1, c0:c1]
+        bad = {
+            "top": 1 - sub[0].mean(), "bottom": 1 - sub[-1].mean(),
+            "left": 1 - sub[:, 0].mean(), "right": 1 - sub[:, -1].mean(),
+        }
+        edge, worst = max(bad.items(), key=lambda kv: kv[1])
+        if worst == 0:
+            break
+        if edge == "top":
+            r0 += 1
+        elif edge == "bottom":
+            r1 -= 1
+        elif edge == "left":
+            c0 += 1
+        else:
+            c1 -= 1
+    return r0, r1, c0, c1
 
 
 def _downsample(arr: np.ndarray, max_dim: int):
@@ -31,14 +61,26 @@ def build_terrain_mesh(dem_path: str, footprint_mm: float, exaggeration: float,
     with rasterio.open(dem_path) as src:
         band = src.read(1).astype(np.float64)
         nodata = src.nodata
-        if nodata is not None:
+        if nodata is not None and not np.isnan(nodata):
             band[band == nodata] = np.nan
-        # fill any gaps with nearest-neighbour style average so the mesh stays solid
-        if np.isnan(band).any():
-            finite_mean = np.nanmean(band)
-            band = np.where(np.isnan(band), finite_mean, band)
-
         transform = src.transform
+
+        # crop away the empty wedges left by reprojection so the model's
+        # sides are straight and its lowest point is real terrain
+        valid = np.isfinite(band)
+        if not valid.any():
+            raise ValueError("The elevation data for this area is empty")
+        r0, r1, c0, c1 = _trim_to_valid(valid)
+        band = band[r0:r1, c0:c1]
+        transform = transform * rasterio.Affine.translation(c0, r0)
+
+        # any remaining interior gaps (rare voids in the DEM): copy the
+        # nearest real elevation rather than an area-wide average
+        missing = ~np.isfinite(band)
+        if missing.any():
+            idx = ndimage.distance_transform_edt(missing, return_distances=False, return_indices=True)
+            band = band[tuple(idx)]
+
         rows, cols = band.shape
 
         band, factor = _downsample(band, max_grid)
