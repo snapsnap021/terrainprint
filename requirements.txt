@@ -5,4 +5,5 @@ requests
 numpy
 rasterio
 trimesh
-scipy  # required by trimesh.fix_normals() (connected components)
+scipy     # trimesh: fix_normals() connected components
+networkx  # trimesh: fix_normals() winding repair
