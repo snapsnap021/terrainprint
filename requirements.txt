@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-multipart
+requests
+numpy
+rasterio
+trimesh
+scipy  # required by trimesh.fix_normals() (connected components)
