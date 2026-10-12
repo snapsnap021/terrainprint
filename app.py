@@ -12,6 +12,9 @@ from geo import fetch_dem, reproject_to_utm
 from mesh import build_terrain_mesh
 from route import build_route_mesh
 
+# OpenTopography global DEMs offered in the UI (all ~30 m)
+DEM_TYPES = ("COP30", "NASADEM", "AW3D30", "SRTMGL1")
+
 app = FastAPI(title="Terrain + Route STL Generator")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -31,7 +34,8 @@ async def generate(
     base_thickness_mm: float = Form(2.0),
     vertical_offset_m: float = Form(4.0),
     tube_diameter_mm: float = Form(1.2),
-    max_grid: int = Form(250),
+    max_grid: int = Form(0),  # 0 = full DEM resolution
+    demtype: str = Form("COP30"),
     gpx: UploadFile = File(...),
 ):
     try:
@@ -40,6 +44,8 @@ async def generate(
             raise ValueError
     except Exception:
         raise HTTPException(400, "bbox must be a JSON array [west, south, east, north]")
+    if demtype not in DEM_TYPES:
+        raise HTTPException(400, f"demtype must be one of {', '.join(DEM_TYPES)}")
 
     workdir = tempfile.mkdtemp(prefix="terrain_")
     try:
@@ -50,7 +56,7 @@ async def generate(
         raw_dem = os.path.join(workdir, "dem_raw.tif")
         utm_dem = os.path.join(workdir, "dem_utm.tif")
 
-        fetch_dem(tuple(bbox_vals), api_key, raw_dem)
+        fetch_dem(tuple(bbox_vals), api_key, raw_dem, demtype=demtype)
         utm_epsg = reproject_to_utm(raw_dem, utm_dem)
 
         terrain_mesh, metadata = build_terrain_mesh(
@@ -78,7 +84,11 @@ async def generate(
         summary_lines = [
             "Terrain + Route generation summary",
             "===================================",
+            f"Elevation source: {demtype}",
             f"UTM zone EPSG: {utm_epsg}",
+            f"Terrain grid: {metadata['grid_elev'].shape[1]} x {metadata['grid_elev'].shape[0]} points"
+            f" ({metadata['width_m'] / max(metadata['grid_elev'].shape[1] - 1, 1):.0f} m /"
+            f" {metadata['model_width_mm'] / max(metadata['grid_elev'].shape[1] - 1, 1):.2f} mm spacing)",
             f"Area covered: {metadata['width_m']:.1f} m x {metadata['height_m']:.1f} m",
             f"Elevation range: {metadata['min_elev']:.1f} - {metadata['max_elev']:.1f} m",
             f"Horizontal scale: {metadata['horizontal_scale']:.6f} (mm per real metre)",

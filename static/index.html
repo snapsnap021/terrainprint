@@ -14,7 +14,7 @@
   h1 { font-size: 18px; margin: 0 0 12px; }
   label { display: block; margin: 10px 0 2px; font-weight: 600; }
   label small { font-weight: 400; color: #666; }
-  input { width: 100%; padding: 6px; }
+  input, select { width: 100%; padding: 6px; }
   button { margin-top: 10px; width: 100%; padding: 9px; font-size: 14px; cursor: pointer; }
   #generate { background: #2d6cdf; color: #fff; border: 0; border-radius: 4px; }
   #generate:disabled { background: #999; cursor: wait; }
@@ -49,8 +49,19 @@
   <input type="number" id="tube_diameter_mm" value="1.2" step="0.1" min="0.4">
   <label>Route height above terrain <small>(real-world m)</small></label>
   <input type="number" id="vertical_offset_m" value="4.0" step="1" min="0">
-  <label>Terrain mesh detail <small>(grid cells, longest side)</small></label>
-  <input type="number" id="max_grid" value="250" step="10" min="20">
+  <label>Terrain detail</label>
+  <select id="max_grid">
+    <option value="0" selected>Full (every elevation point, ~30 m)</option>
+    <option value="400">Medium (smaller file, faster)</option>
+    <option value="200">Low (quick test)</option>
+  </select>
+  <label>Elevation data source <small>(all ~30 m)</small></label>
+  <select id="demtype">
+    <option value="COP30" selected>Copernicus GLO-30 (recommended)</option>
+    <option value="AW3D30">ALOS World 3D 30 m</option>
+    <option value="NASADEM">NASADEM</option>
+    <option value="SRTMGL1">SRTM GL1</option>
+  </select>
 
   <button type="button" id="generate">Generate STL files</button>
   <div id="status"></div>
@@ -130,7 +141,7 @@ $("generate").addEventListener("click", async () => {
   const fd = new FormData();
   fd.append("bbox", JSON.stringify(bbox));
   fd.append("api_key", key);
-  for (const id of ["footprint_mm", "exaggeration", "base_thickness_mm", "vertical_offset_m", "tube_diameter_mm", "max_grid"])
+  for (const id of ["footprint_mm", "exaggeration", "base_thickness_mm", "vertical_offset_m", "tube_diameter_mm", "max_grid", "demtype"])
     fd.append(id, $(id).value);
   fd.append("gpx", gpx);
 

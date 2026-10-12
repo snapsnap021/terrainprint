@@ -8,7 +8,7 @@ def _downsample(arr: np.ndarray, max_dim: int):
     """Shrink a 2D array so its largest dimension is <= max_dim, by block averaging."""
     rows, cols = arr.shape
     largest = max(rows, cols)
-    if largest <= max_dim:
+    if max_dim <= 0 or largest <= max_dim:  # 0 = keep full DEM resolution
         return arr, 1
     factor = int(np.ceil(largest / max_dim))
     trimmed_rows = (rows // factor) * factor
@@ -20,7 +20,7 @@ def _downsample(arr: np.ndarray, max_dim: int):
 
 
 def build_terrain_mesh(dem_path: str, footprint_mm: float, exaggeration: float,
-                        base_thickness_mm: float, max_grid: int = 250):
+                        base_thickness_mm: float, max_grid: int = 0):
     """Build a terrain solid from a UTM-reprojected GeoTIFF.
 
     Returns (trimesh.Trimesh, metadata dict). metadata carries everything
@@ -69,49 +69,49 @@ def build_terrain_mesh(dem_path: str, footprint_mm: float, exaggeration: float,
     Z_top = base_thickness_mm + (band - min_elev) * vertical_scale
 
     verts_top = np.column_stack([X.ravel(), Y.ravel(), Z_top.ravel()])
-    verts_bottom = np.column_stack([X.ravel(), Y.ravel(), np.zeros(X.size)])
-
-    def idx(r, c):
-        return r * cols + c
-
-    faces = []
-    # top surface (upward-facing normals)
-    for r in range(rows - 1):
-        for c in range(cols - 1):
-            a, b, cc, d = idx(r, c), idx(r, c + 1), idx(r + 1, c), idx(r + 1, c + 1)
-            faces.append([a, cc, b])
-            faces.append([b, cc, d])
-    top_face_count = len(faces)
-
-    # bottom surface (downward-facing normals) — same indices offset into the bottom block
     n = rows * cols
-    for r in range(rows - 1):
-        for c in range(cols - 1):
-            a, b, cc, d = idx(r, c), idx(r, c + 1), idx(r + 1, c), idx(r + 1, c + 1)
-            faces.append([n + a, n + b, n + cc])
-            faces.append([n + b, n + d, n + cc])
 
-    # side walls around the perimeter
-    def wall(i0, i1):
-        # i0, i1: two adjacent top vertex indices along an edge, winding chosen
-        # so the wall faces outward
-        faces.append([i0, i1, n + i0])
-        faces.append([i1, n + i1, n + i0])
+    # top surface (upward-facing normals), built vectorised: for each grid
+    # cell a=(r,c), b=(r,c+1), cc=(r+1,c), d=(r+1,c+1)
+    R, C = np.meshgrid(np.arange(rows - 1), np.arange(cols - 1), indexing="ij")
+    a = (R * cols + C).ravel()
+    b, cc = a + 1, a + cols
+    d = cc + 1
+    top_faces = np.concatenate([np.column_stack([a, cc, b]), np.column_stack([b, cc, d])])
 
-    for c in range(cols - 1):  # north edge (row 0)
-        wall(idx(0, c + 1), idx(0, c))
-    for c in range(cols - 1):  # south edge (last row)
-        wall(idx(rows - 1, c), idx(rows - 1, c + 1))
-    for r in range(rows - 1):  # west edge (col 0)
-        wall(idx(r, 0), idx(r + 1, 0))
-    for r in range(rows - 1):  # east edge (last col)
-        wall(idx(r + 1, cols - 1), idx(r, cols - 1))
+    # perimeter of the grid, counter-clockwise seen from above (north = row 0):
+    # south edge west->east, east edge south->north, north edge east->west,
+    # west edge north->south; corners appear once
+    last_r, last_c = rows - 1, cols - 1
+    perim = np.concatenate([
+        last_r * cols + np.arange(0, last_c),              # south row
+        np.arange(last_r, 0, -1) * cols + last_c,          # east col
+        0 * cols + np.arange(last_c, 0, -1),               # north row
+        np.arange(0, last_r) * cols + 0,                   # west col
+    ])
+    m = len(perim)
 
-    vertices = np.vstack([verts_top, verts_bottom])
-    faces = np.array(faces)
+    # flat base: only the perimeter is needed (plus a centre point for a
+    # triangle fan) -- a full-resolution bottom grid would double the file
+    # size for a face nobody sees
+    verts_bottom = np.column_stack([X.ravel()[perim], Y.ravel()[perim], np.zeros(m)])
+    centre = np.array([[X.mean(), Y.mean(), 0.0]])
+    bot = n + np.arange(m)          # bottom vertex for each perimeter vertex
+    centre_idx = n + m
 
-    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
-    mesh.fix_normals()
+    nxt = np.roll(np.arange(m), -1)
+    top_k, top_k1 = perim, perim[nxt]
+    bot_k, bot_k1 = bot, bot[nxt]
+    wall_faces = np.concatenate([
+        np.column_stack([top_k, bot_k, bot_k1]),
+        np.column_stack([top_k, bot_k1, top_k1]),
+    ])
+    base_faces = np.column_stack([np.full(m, centre_idx), bot_k1, bot_k])
+
+    vertices = np.vstack([verts_top, verts_bottom, centre])
+    faces = np.concatenate([top_faces, wall_faces, base_faces])
+
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
 
     metadata = {
         "origin_x": min_x,

@@ -77,9 +77,12 @@ Then open http://127.0.0.1:8000 in your browser.
      1–1.5mm prints reliably on a 0.4mm nozzle.
    - *Route height above terrain* — a small real-world offset (metres)
      so the route sits proud of the surface rather than being buried in it.
-   - *Terrain mesh detail* — grid resolution; higher is more detailed but
-     slower to generate and slice. 250 is a good default; drop it if
-     generation is slow or Bambu Studio struggles with the file.
+   - *Terrain detail* — **Full** keeps every elevation point (~30 m apart,
+     about 0.3 mm on a 200 mm print) and is the default. Medium/Low average
+     neighbouring points together for smaller, faster files at the cost of
+     detail.
+   - *Elevation data source* — Copernicus GLO-30 is the default. If another
+     tool's output looked better, try the source it used (e.g. ALOS AW3D30).
 5. Click **Generate STL files**. This can take anywhere from a few seconds
    to a couple of minutes depending on area size and mesh detail — it's
    downloading real elevation data and building the mesh server-side.
