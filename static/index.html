@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terrain + Route STL</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; display: flex; height: 100vh; color: #222; }
+  #map { flex: 1; }
+  #panel { width: 340px; padding: 16px; overflow-y: auto; border-left: 1px solid #ddd; background: #fafafa; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  label { display: block; margin: 10px 0 2px; font-weight: 600; }
+  label small { font-weight: 400; color: #666; }
+  input { width: 100%; padding: 6px; }
+  button { margin-top: 10px; width: 100%; padding: 9px; font-size: 14px; cursor: pointer; }
+  #generate { background: #2d6cdf; color: #fff; border: 0; border-radius: 4px; }
+  #generate:disabled { background: #999; cursor: wait; }
+  #bbox { font-family: monospace; font-size: 12px; color: #444; word-break: break-all; }
+  #status { margin-top: 12px; white-space: pre-wrap; }
+  .err { color: #b00020; }
+  @media (max-width: 700px) { body { flex-direction: column; } #map { height: 50vh; flex: none; } #panel { width: 100%; } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h1>Terrain + Route STL</h1>
+
+  <label>GPX route</label>
+  <input type="file" id="gpx" accept=".gpx">
+  <button type="button" id="fit">Box around GPX route</button>
+
+  <label>Area <small>(draw a rectangle on the map, or use the button above)</small></label>
+  <div id="bbox">none selected</div>
+
+  <label>OpenTopography API key</label>
+  <input type="password" id="api_key" autocomplete="off">
+
+  <label>Footprint <small>(longest side, mm)</small></label>
+  <input type="number" id="footprint_mm" value="200" step="1" min="10">
+  <label>Vertical exaggeration</label>
+  <input type="number" id="exaggeration" value="2.0" step="0.1" min="0.1">
+  <label>Base thickness <small>(mm)</small></label>
+  <input type="number" id="base_thickness_mm" value="2.0" step="0.5" min="0.5">
+  <label>Route tube diameter <small>(mm)</small></label>
+  <input type="number" id="tube_diameter_mm" value="1.2" step="0.1" min="0.4">
+  <label>Route height above terrain <small>(real-world m)</small></label>
+  <input type="number" id="vertical_offset_m" value="4.0" step="1" min="0">
+  <label>Terrain mesh detail <small>(grid cells, longest side)</small></label>
+  <input type="number" id="max_grid" value="250" step="10" min="20">
+
+  <button type="button" id="generate">Generate STL files</button>
+  <div id="status"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script>
+const map = L.map("map").setView([-29, 18], 6);
+L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 17, attribution: "© OpenStreetMap contributors, SRTM | © OpenTopoMap (CC-BY-SA)"
+}).addTo(map);
+
+const drawn = new L.FeatureGroup().addTo(map);
+map.addControl(new L.Control.Draw({
+  position: "topleft",
+  draw: { rectangle: { showArea: false }, polygon: false, polyline: false, circle: false, marker: false, circlemarker: false },
+  edit: { featureGroup: drawn }
+}));
+
+let bbox = null;      // [west, south, east, north]
+let routeLayer = null;
+const $ = id => document.getElementById(id);
+
+function setRect(bounds) {
+  drawn.clearLayers();
+  drawn.addLayer(L.rectangle(bounds, { color: "#2d6cdf", weight: 2 }));
+  updateBbox();
+}
+function updateBbox() {
+  const layer = drawn.getLayers()[0];
+  if (!layer) { bbox = null; $("bbox").textContent = "none selected"; return; }
+  const b = layer.getBounds();
+  bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(v => +v.toFixed(6));
+  const km = (a, c) => map.distance(a, c) / 1000;
+  const w = km([b.getSouth(), b.getWest()], [b.getSouth(), b.getEast()]);
+  const h = km([b.getSouth(), b.getWest()], [b.getNorth(), b.getWest()]);
+  $("bbox").textContent = `${JSON.stringify(bbox)}\n≈ ${w.toFixed(1)} × ${h.toFixed(1)} km (${(w * h).toFixed(0)} km²)`;
+}
+map.on(L.Draw.Event.CREATED, e => setRect(e.layer.getBounds()));
+map.on(L.Draw.Event.EDITED, updateBbox);
+map.on(L.Draw.Event.DELETED, updateBbox);
+
+function gpxPoints(text) {
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  return [...doc.getElementsByTagName("trkpt"), ...doc.getElementsByTagName("rtept")]
+    .map(p => [+p.getAttribute("lat"), +p.getAttribute("lon")]);
+}
+$("gpx").addEventListener("change", async () => {
+  const f = $("gpx").files[0];
+  if (!f) return;
+  const pts = gpxPoints(await f.text());
+  if (routeLayer) map.removeLayer(routeLayer);
+  if (!pts.length) { status("No track points found in that GPX.", true); return; }
+  routeLayer = L.polyline(pts, { color: "#e4572e", weight: 3 }).addTo(map);
+  map.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
+});
+$("fit").addEventListener("click", () => {
+  if (!routeLayer) { status("Choose a GPX file first.", true); return; }
+  setRect(routeLayer.getBounds().pad(0.08));
+});
+
+try { $("api_key").value = localStorage.getItem("ot_api_key") || ""; } catch (e) {}
+$("api_key").addEventListener("change", () => {
+  try { localStorage.setItem("ot_api_key", $("api_key").value.trim()); } catch (e) {}
+});
+
+function status(msg, isErr) { $("status").textContent = msg; $("status").className = isErr ? "err" : ""; }
+
+$("generate").addEventListener("click", async () => {
+  const gpx = $("gpx").files[0];
+  const key = $("api_key").value.trim();
+  if (!bbox) return status("Draw an area on the map first.", true);
+  if (!gpx) return status("Choose a GPX file.", true);
+  if (!key) return status("Enter your OpenTopography API key.", true);
+
+  const fd = new FormData();
+  fd.append("bbox", JSON.stringify(bbox));
+  fd.append("api_key", key);
+  for (const id of ["footprint_mm", "exaggeration", "base_thickness_mm", "vertical_offset_m", "tube_diameter_mm", "max_grid"])
+    fd.append(id, $(id).value);
+  fd.append("gpx", gpx);
+
+  $("generate").disabled = true;
+  status("Downloading elevation data and building meshes… this can take a minute.");
+  try {
+    const resp = await fetch("/api/generate", { method: "POST", body: fd });
+    if (!resp.ok) {
+      let detail = await resp.text();
+      try { const j = JSON.parse(detail); detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail, null, 1); } catch (e) {}
+      throw new Error(detail);
+    }
+    const blob = await resp.blob();
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "terrain_and_route.zip" });
+    a.click();
+    URL.revokeObjectURL(a.href);
+    status("Done — terrain_and_route.zip downloaded.");
+  } catch (e) {
+    status("Error: " + e.message, true);
+  } finally {
+    $("generate").disabled = false;
+  }
+});
+</script>
+</body>
+</html>

@@ -128,5 +128,10 @@ def build_terrain_mesh(dem_path: str, footprint_mm: float, exaggeration: float,
         "model_relief_mm": (max_elev - min_elev) * vertical_scale,
         "model_total_height_mm": base_thickness_mm + (max_elev - min_elev) * vertical_scale,
         "is_watertight": bool(mesh.is_watertight),
+        # the exact (downsampled) grid the top surface was built from, so the
+        # route can be draped on the printed surface rather than the raw DEM
+        "grid_xs": xs,
+        "grid_ys": ys,
+        "grid_elev": band,
     }
     return mesh, metadata

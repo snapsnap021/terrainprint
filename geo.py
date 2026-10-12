@@ -27,7 +27,11 @@ def fetch_dem(bbox: tuple, api_key: str, out_path: str, demtype: str = "COP30") 
         "outputFormat": "GTiff",
         "API_Key": api_key,
     }
-    resp = requests.get(url, params=params, timeout=120)
+    try:
+        resp = requests.get(url, params=params, timeout=120)
+    except requests.RequestException as e:
+        # don't let the exception text (which includes the full URL) leak the API key
+        raise RuntimeError(f"Could not reach OpenTopography: {type(e).__name__}") from None
     if resp.status_code != 200 or resp.headers.get("Content-Type", "").startswith("application/json"):
         raise RuntimeError(f"OpenTopography request failed ({resp.status_code}): {resp.text[:500]}")
     with open(out_path, "wb") as f:

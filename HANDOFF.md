@@ -12,6 +12,20 @@ That's the first thing to do once you're set up locally.
   dependencies beyond numpy and should pass immediately.
 - All `.py` files pass `python3 -m py_compile` (syntax-checked only).
 
+## Verified in the first Claude Code session
+- `pip install -r requirements.txt` works on Linux / Python 3.13 (scipy was
+  missing from the original list; trimesh needs it for `fix_normals()`).
+- `route.py` and `static/index.html` were missing from the handoff and were
+  rewritten. The route is draped on the terrain's own downsampled grid
+  (passed via `metadata["grid_*"]`), not the raw DEM or GPX elevations.
+- `/api/generate` was run end-to-end (real GPX, real UTM reprojection,
+  real mesh + route + zip) with `fetch_dem` swapped for a synthetic DEM,
+  because that session's network blocked portal.opentopography.org.
+  The terrain came out watertight, and the route stayed inside the
+  terrain footprint and followed its surface.
+- Still untested: a live OpenTopography download, and the map page in a
+  real browser (the Leaflet CDN was also blocked in that session).
+
 ## What's NOT yet verified (do this first in Claude Code)
 1. **Dependency install** — `pip install -r requirements.txt` was never
    actually run. `rasterio` pulls in GDAL and can be finicky, especially on
