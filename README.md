@@ -45,6 +45,12 @@ coordinate handling.
 
 ## Running it
 
+**Windows, no terminal needed:** double-click `start.bat`. The first run
+sets everything up (a few minutes); after that it starts in seconds and
+opens the app in your browser. Keep its window open while you use the app.
+
+**Any platform, from a terminal:**
+
 ```
 uvicorn app:app --reload
 ```
